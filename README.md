@@ -1,6 +1,8 @@
 ## PolyBot
 
-An automatic trading bot for Polymarket that focuses on order book imbalance trading, written in Java. Uses the Polymarket CLOB websocket API to minimise latency. 
+An automatic trading bot for Polymarket that focuses on order book imbalance trading. Looks at the pressure from the order book and buys with the goal of making a profit from upward/downward trends.
+
+Written in Java, and uses the Polymarket CLOB websocket API to minimise latency. 
 
 Includes a UI in Java Swing for analysing markets, tracking top traders and doing deep-dives into a specific market.
 
