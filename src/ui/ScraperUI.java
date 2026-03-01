@@ -13,7 +13,7 @@ public class ScraperUI extends JFrame {
     private final DeepDivePanel deepDive;
     private final TradingPanel tradingPanel;
     private final JTabbedPane tabbedPane = new JTabbedPane();
-    
+
     private boolean paused = false;
     private String smartPeriod = "WEEK";
 
@@ -30,7 +30,7 @@ public class ScraperUI extends JFrame {
         deepDive = new DeepDivePanel();
         tradingPanel = new TradingPanel();
 
-        tabbedPane.setFont(new Font("Arial", Font.BOLD, 24));
+        tabbedPane.setFont(new Font("Arial", Font.BOLD, 30));
         tabbedPane.addTab("Dashboard", dashboard);
         tabbedPane.addTab("Market Deep Dive", deepDive);
         tabbedPane.addTab("Trading", tradingPanel);
@@ -47,7 +47,7 @@ public class ScraperUI extends JFrame {
         topPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         JButton pauseBtn = new JButton("Pause Feed");
-        pauseBtn.setFont(new Font("Arial", Font.BOLD, 24));
+        pauseBtn.setFont(new Font("Arial", Font.BOLD, 32));
         pauseBtn.addActionListener(e -> {
             paused = !paused;
             pauseBtn.setText(paused ? "Resume Feed" : "Pause Feed");
@@ -55,15 +55,15 @@ public class ScraperUI extends JFrame {
         });
 
         JButton loadLogBtn = new JButton("Load Raw Log");
-        loadLogBtn.setFont(new Font("Arial", Font.BOLD, 24));
+        loadLogBtn.setFont(new Font("Arial", Font.BOLD, 32));
         loadLogBtn.addActionListener(e -> loadLog());
 
         JButton filterBtn = new JButton("Filters");
-        filterBtn.setFont(new Font("Arial", Font.BOLD, 24));
+        filterBtn.setFont(new Font("Arial", Font.BOLD, 32));
         filterBtn.addActionListener(e -> showFilters());
 
         JButton clearBtn = new JButton("Clear Stats");
-        clearBtn.setFont(new Font("Arial", Font.BOLD, 24));
+        clearBtn.setFont(new Font("Arial", Font.BOLD, 32));
         clearBtn.addActionListener(e -> {
             messageHandler.getStats().clear();
             refresh();
@@ -75,13 +75,17 @@ public class ScraperUI extends JFrame {
         topPanel.add(filterBtn);
         topPanel.add(clearBtn);
 
-        JComboBox<String> periodBox = new JComboBox<>(new String[]{"WEEK", "MONTH"});
-        periodBox.setFont(new Font("Arial", Font.BOLD, 24));
+        JComboBox<String> periodBox = new JComboBox<>(new String[] { "WEEK", "MONTH" });
+        periodBox.setFont(new Font("Arial", Font.BOLD, 32));
         periodBox.addActionListener(e -> {
             smartPeriod = (String) periodBox.getSelectedItem();
             new Thread(() -> leaderboard.refresh(smartPeriod)).start();
         });
-        topPanel.add(new JLabel("Smart Period:") {{ setFont(new Font("Arial", Font.BOLD, 20)); }});
+        topPanel.add(new JLabel("Smart Period:") {
+            {
+                setFont(new Font("Arial", Font.BOLD, 32));
+            }
+        });
         topPanel.add(periodBox);
 
         return topPanel;
@@ -90,7 +94,8 @@ public class ScraperUI extends JFrame {
     private void setupTimers() {
         javax.swing.Timer timer = new javax.swing.Timer(2000, e -> refresh());
         timer.start();
-        javax.swing.Timer leaderboardTimer = new javax.swing.Timer(300000, e -> new Thread(() -> leaderboard.refresh(smartPeriod)).start());
+        javax.swing.Timer leaderboardTimer = new javax.swing.Timer(300000,
+                e -> new Thread(() -> leaderboard.refresh(smartPeriod)).start());
         leaderboardTimer.start();
         new Thread(() -> leaderboard.refresh(smartPeriod)).start();
     }
@@ -101,32 +106,39 @@ public class ScraperUI extends JFrame {
     }
 
     private void refresh() {
-        if (paused) return;
+        if (paused)
+            return;
         TransactionStats stats = messageHandler.getStats();
         java.util.function.Predicate<Transaction> filter = t -> !messageHandler.isExcluded(t);
 
         var buys = stats.getTopBoughtStats(filter).stream()
-                .map(e -> Map.entry(e.getKey(), new Object[]{e.getValue().title(), String.format("%.2f", e.getValue().value()), e.getKey()}))
+                .map(e -> Map.entry(e.getKey(),
+                        new Object[] { e.getValue().title(), String.format("%.2f", e.getValue().value()), e.getKey() }))
                 .toList();
         var sells = stats.getTopSoldStats(filter).stream()
-                .map(e -> Map.entry(e.getKey(), new Object[]{e.getValue().title(), String.format("%.2f", e.getValue().value()), e.getKey()}))
+                .map(e -> Map.entry(e.getKey(),
+                        new Object[] { e.getValue().title(), String.format("%.2f", e.getValue().value()), e.getKey() }))
                 .toList();
         var spenders = stats.getTopSpenders(filter);
         var smarts = leaderboard.getSmartTraders().stream()
-                .map(s -> new Object[]{s.userName(), String.format("%.2f", s.pnl()), String.format("%.2f", s.vol()), s.proxyWallet()})
+                .map(s -> new Object[] { s.userName(), String.format("%.2f", s.pnl()), String.format("%.2f", s.vol()),
+                        s.proxyWallet() })
                 .toList();
 
         dashboard.updateData(buys, sells, spenders, smarts);
 
         Map<String, String> markets = new HashMap<>();
-        for (var e : buys) markets.put((String)e.getValue()[0], e.getKey());
-        for (var e : sells) markets.put((String)e.getValue()[0], e.getKey());
+        for (var e : buys)
+            markets.put((String) e.getValue()[0], e.getKey());
+        for (var e : sells)
+            markets.put((String) e.getValue()[0], e.getKey());
         deepDive.updateMarketSelector(markets);
     }
 
     private void showUserTrades(String user, String address) {
         new Thread(() -> {
-            List<Transaction> trades = messageHandler.getStats().getRecentTradesForUser(user, t -> !messageHandler.isExcluded(t));
+            List<Transaction> trades = messageHandler.getStats().getRecentTradesForUser(user,
+                    t -> !messageHandler.isExcluded(t));
             if (trades.isEmpty() && address != null) {
                 addLog("--- Fetching recent trades for " + user + " from API ---");
                 trades = LeaderboardTracker.fetchRecentTrades(address);
@@ -153,14 +165,16 @@ public class ScraperUI extends JFrame {
     }
 
     private void loadLog() {
-        String date = JOptionPane.showInputDialog(this, "Enter date (yyyy-MM-dd):", java.time.LocalDate.now().toString());
+        String date = JOptionPane.showInputDialog(this, "Enter date (yyyy-MM-dd):",
+                java.time.LocalDate.now().toString());
         if (date != null && !date.isBlank()) {
             messageHandler.getStats().clear();
             new Thread(() -> {
                 try {
                     List<String> lines = DataLogger.readRawLog(date);
                     addLog("--- Replaying log from " + date + " ---");
-                    for (String line : lines) messageHandler.handle(line, false);
+                    for (String line : lines)
+                        messageHandler.handle(line, false);
                     addLog("--- Finished replaying log ---");
                 } catch (Exception e) {
                     JOptionPane.showMessageDialog(this, "Error: " + e.getMessage());
@@ -170,7 +184,8 @@ public class ScraperUI extends JFrame {
     }
 
     public void addLog(String message) {
-        if (paused && !message.startsWith("---")) return;
+        if (paused && !message.startsWith("---"))
+            return;
         dashboard.addLog(message);
     }
 }

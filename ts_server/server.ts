@@ -1,6 +1,5 @@
 import { load } from "https://deno.land/std@0.204.0/dotenv/mod.ts";
-await load({ export: true });
-
+await load({ export: true, envPath: ".env" });
 import express from "npm:express@4.18.2";
 import { ClobClient } from "npm:@polymarket/clob-client@^5.2.3";
 import {Wallet} from "ethers";
@@ -41,6 +40,73 @@ const client = new ClobClient(
   proxyAddress
 );
 
+const marketCache = new Map<string, string>();
+const priceCache = new Map<string, {price: number, timestamp: number}>();
+
+async function getCurrentPrice(tokenId: string, market: any): Promise<number> {
+    const now = Date.now();
+    const cached = priceCache.get(tokenId);
+    if (cached && (now - cached.timestamp < 10000)) { // 10s cache
+        return cached.price;
+    }
+
+    // Check if market is resolved
+    if (market && Array.isArray(market.tokens)) {
+        const token = market.tokens.find((t: any) => t.token_id === tokenId);
+        if (token) {
+            // If winner is explicitly set, the price is 1 or 0
+            if (token.winner === true) return 1.0;
+            if (token.winner === false && market.closed) return 0.0;
+            
+            // Fallback to the price in the market object if it exists
+            if (typeof token.price === 'number') {
+                return token.price;
+            }
+        }
+    }
+
+    try {
+        // We use midpoint for P/L calculation
+        const price = await client.getMidpoint(tokenId);
+        const p = parseFloat(price.mid);
+        priceCache.set(tokenId, {price: p, timestamp: now});
+        return p;
+    } catch (error) {
+        // console.error(`Error fetching midpoint for ${tokenId}:`, error.message);
+        
+        // Final fallback: try to get last price from market info if we haven't already
+        if (market && Array.isArray(market.tokens)) {
+            const token = market.tokens.find((t: any) => t.token_id === tokenId);
+            if (token && typeof token.price === 'number') {
+                return token.price;
+            }
+        }
+        return 0;
+    }
+}
+
+const marketFullCache = new Map<string, any>();
+
+async function getMarketFull(marketId: string) {
+    if (!marketId) return null;
+    if (marketFullCache.has(marketId)) {
+        return marketFullCache.get(marketId);
+    }
+    try {
+        const market = await client.getMarket(marketId);
+        marketFullCache.set(marketId, market);
+        return market;
+    } catch (error) {
+        console.error(`Error fetching full market ${marketId}:`, error);
+        return null;
+    }
+}
+
+async function getMarketTitle(marketId: string) {
+    const market = await getMarketFull(marketId);
+    return market ? market.question : "Unknown Market";
+}
+
 // Get order book
 app.get("/book", async (req: any, res: any) => {
   try {
@@ -58,14 +124,29 @@ app.get("/book", async (req: any, res: any) => {
 
 app.get("/trades", async (_req: any, res: any) => {
   try {
-      const orders = await client.getTrades({ // todo not hardcode
-          market: "0x4b02efe53e631ada84681303fd66d79ad615f3d2b6a28b4633d43d935f89af58",
+      const marketId = "0x4b02efe53e631ada84681303fd66d79ad615f3d2b6a28b4633d43d935f89af58";
+      const trades: any = await client.getTrades({ // todo not hardcode
+          market: marketId,
       },
           true);
-      console.log("got orders: ", JSON.stringify(orders, null, 2));
-    res.json(orders);
+      
+      const market = await getMarketFull(marketId);
+      const marketName = market ? market.question : "Unknown Market";
+      
+      const enhancedTrades = await Promise.all(
+          (Array.isArray(trades) ? trades : []).map(async (t: any) => {
+              const currentPrice = await getCurrentPrice(t.asset_id, market);
+              return {
+                  ...t,
+                  market_name: marketName,
+                  current_price: currentPrice
+              };
+          })
+      );
+
+      res.json(enhancedTrades);
   } catch (error: any) {
-    console.error("Error fetching open orders:", error);
+    console.error("Error fetching trades:", error);
     res.status(500).json({ error: error.message });
   }
 });

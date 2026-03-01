@@ -38,3 +38,4 @@ node_modules/
 ts_server/node_modules/
 ts_server/deno.lock
 ts_server/basic.ts
+examples/
