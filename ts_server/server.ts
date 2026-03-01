@@ -2,7 +2,7 @@ import { load } from "https://deno.land/std@0.204.0/dotenv/mod.ts";
 await load({ export: true, envPath: ".env" });
 import express from "npm:express@4.18.2";
 import { ClobClient } from "npm:@polymarket/clob-client@^5.2.3";
-import {Wallet} from "ethers";
+import { Wallet } from "ethers";
 
 
 const app = express();
@@ -11,9 +11,9 @@ app.use(express.json());
 const PORT = 3000;
 
 const credentials = {
-  key: process.env.POLY_API_KEY,
-  secret: process.env.POLY_API_SECRET,
-  passphrase: process.env.POLY_API_PASSPHRASE
+    key: process.env.POLY_API_KEY,
+    secret: process.env.POLY_API_SECRET,
+    passphrase: process.env.POLY_API_PASSPHRASE
 };
 
 if (!credentials.key || !credentials.secret || !credentials.passphrase) {
@@ -33,15 +33,15 @@ if (!proxyAddress) {
 const wallet = new Wallet(privateKey)
 
 const client = new ClobClient(
-  "https://clob.polymarket.com",
-  137, wallet,
-  credentials,
-  1,
-  proxyAddress
+    "https://clob.polymarket.com",
+    137, wallet,
+    credentials,
+    1,
+    proxyAddress
 );
 
 const marketCache = new Map<string, string>();
-const priceCache = new Map<string, {price: number, timestamp: number}>();
+const priceCache = new Map<string, { price: number, timestamp: number }>();
 
 async function getCurrentPrice(tokenId: string, market: any): Promise<number> {
     const now = Date.now();
@@ -50,15 +50,12 @@ async function getCurrentPrice(tokenId: string, market: any): Promise<number> {
         return cached.price;
     }
 
-    // Check if market is resolved
     if (market && Array.isArray(market.tokens)) {
         const token = market.tokens.find((t: any) => t.token_id === tokenId);
         if (token) {
-            // If winner is explicitly set, the price is 1 or 0
             if (token.winner === true) return 1.0;
             if (token.winner === false && market.closed) return 0.0;
-            
-            // Fallback to the price in the market object if it exists
+
             if (typeof token.price === 'number') {
                 return token.price;
             }
@@ -66,15 +63,12 @@ async function getCurrentPrice(tokenId: string, market: any): Promise<number> {
     }
 
     try {
-        // We use midpoint for P/L calculation
         const price = await client.getMidpoint(tokenId);
         const p = parseFloat(price.mid);
-        priceCache.set(tokenId, {price: p, timestamp: now});
+        priceCache.set(tokenId, { price: p, timestamp: now });
         return p;
     } catch (error) {
-        // console.error(`Error fetching midpoint for ${tokenId}:`, error.message);
-        
-        // Final fallback: try to get last price from market info if we haven't already
+
         if (market && Array.isArray(market.tokens)) {
             const token = market.tokens.find((t: any) => t.token_id === tokenId);
             if (token && typeof token.price === 'number') {
@@ -107,48 +101,51 @@ async function getMarketTitle(marketId: string) {
     return market ? market.question : "Unknown Market";
 }
 
-// Get order book
 app.get("/book", async (req: any, res: any) => {
-  try {
-    const tokenId = req.query.token_id as string;
-    if (!tokenId) {
-      return res.status(400).json({ error: "token_id query parameter is required" });
+    try {
+        const tokenId = req.query.token_id as string;
+        if (!tokenId) {
+            return res.status(400).json({ error: "token_id query parameter is required" });
+        }
+        const resp = await fetch("https://clob.polymarket.com/book?token_id=" + tokenId);
+        if (!resp.ok) {
+            return res.status(resp.status).json({ error: "CLOB API error: " + resp.statusText });
+        }
+        const book = await resp.json();
+        res.json(book);
+    } catch (error: any) {
+        console.error("Error fetching order book:", error);
+        res.status(500).json({ error: error.message });
     }
-    const book = await client.getMarketOrderBook(tokenId);
-    res.json(book);
-  } catch (error: any) {
-    console.error("Error fetching order book:", error);
-    res.status(500).json({ error: error.message });
-  }
 });
 
 app.get("/trades", async (_req: any, res: any) => {
-  try {
-      const marketId = "0x4b02efe53e631ada84681303fd66d79ad615f3d2b6a28b4633d43d935f89af58";
-      const trades: any = await client.getTrades({ // todo not hardcode
-          market: marketId,
-      },
-          true);
-      
-      const market = await getMarketFull(marketId);
-      const marketName = market ? market.question : "Unknown Market";
-      
-      const enhancedTrades = await Promise.all(
-          (Array.isArray(trades) ? trades : []).map(async (t: any) => {
-              const currentPrice = await getCurrentPrice(t.asset_id, market);
-              return {
-                  ...t,
-                  market_name: marketName,
-                  current_price: currentPrice
-              };
-          })
-      );
+    try {
+        const marketId = "0x4b02efe53e631ada84681303fd66d79ad615f3d2b6a28b4633d43d935f89af58"; // todo
+        const trades: any = await client.getTrades({
+            market: marketId,
+        },
+            true);
 
-      res.json(enhancedTrades);
-  } catch (error: any) {
-    console.error("Error fetching trades:", error);
-    res.status(500).json({ error: error.message });
-  }
+        const market = await getMarketFull(marketId);
+        const marketName = market ? market.question : "Unknown Market";
+
+        const enhancedTrades = await Promise.all(
+            (Array.isArray(trades) ? trades : []).map(async (t: any) => {
+                const currentPrice = await getCurrentPrice(t.asset_id, market);
+                return {
+                    ...t,
+                    market_name: marketName,
+                    current_price: currentPrice
+                };
+            })
+        );
+
+        res.json(enhancedTrades);
+    } catch (error: any) {
+        console.error("Error fetching trades:", error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 app.post("/order", async (req: any, res: any) => {
@@ -185,5 +182,5 @@ app.delete("/orders", async (_req: any, res: any) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Polymarket Bridge Server (Deno) listening on port ${PORT}`);
+    console.log(`Polymarket Bridge Server (Deno) listening on port ${PORT}`);
 });

@@ -309,9 +309,6 @@ public class DeepDivePanel extends JPanel {
         } else {
             sentiment = "more hyped than beyond meat";
             colour = new Color(0, 128, 255);
-            if (pressure < -0.3) {
-                sentiment += "starting to sell";
-            }
         }
 
         sentimentLabel.setText("Sentiment: " + sentiment);

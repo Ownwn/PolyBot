@@ -11,7 +11,7 @@ void main() {
 }
 
 void trackLiveTrades() {
-    System.out.println("Starting live trade tracking with UI...");
+    System.out.println("starting live trade tracking...");
     MessageHandler messageHandler = new MessageHandler();
     
     ScraperUI ui = new ScraperUI(messageHandler);
@@ -25,7 +25,16 @@ void trackLiveTrades() {
             try {
                 new MessageListener(url).startListening(messageHandler::handle);
             } catch (Exception e) {
-                System.err.println("Listener thread crashed, restarting in 5s... " + e.getMessage());
+                if (e.getCause() != null && e.getCause().getCause() != null) {
+                    String inner = e.getCause().getCause().getMessage();
+                    if (Objects.equals(inner, "Unexpected HTTP response status code 429")) {
+                        System.err.println("Rate limit hit, retrying in 3s");
+                        try { Thread.sleep(3000); } catch (InterruptedException ignored) {}
+                        continue;
+                    }
+                }
+                System.err.println("Listener thread crashed, restarting in 5s... ");
+                e.printStackTrace();
             }
             try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
             System.out.println("Attempting to reconnect...");

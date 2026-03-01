@@ -15,6 +15,8 @@ public record MessageListener(String wssUrl) {
 
         HttpClient.newHttpClient()
                 .newWebSocketBuilder()
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .header("Origin", "https://polymarket.com")
                 .buildAsync(uri, new WebSocket.Listener() {
                     StringBuilder buffer = new StringBuilder();
 
@@ -27,8 +29,8 @@ public record MessageListener(String wssUrl) {
 
                     @Override
                     public CompletionStage<?> onText(WebSocket webSocket,
-                                                     CharSequence data,
-                                                     boolean last) {
+                            CharSequence data,
+                            boolean last) {
                         buffer.append(data);
                         if (last) {
                             try {
@@ -44,8 +46,8 @@ public record MessageListener(String wssUrl) {
 
                     @Override
                     public CompletionStage<?> onClose(WebSocket webSocket,
-                                                      int statusCode,
-                                                      String reason) {
+                            int statusCode,
+                            String reason) {
                         System.out.println("WebSocket Closed: " + statusCode + " " + reason);
                         infiniteComplete.complete(null);
                         return CompletableFuture.completedFuture(null);
