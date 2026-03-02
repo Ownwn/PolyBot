@@ -3,7 +3,9 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 final class Parser {
-    private final Tokens t;
+    private final CharSequence s;
+    private int i;
+    private final int len;
 
     static Json parseJson(CharSequence raw) {
         Parser p = new Parser(raw);
@@ -11,94 +13,205 @@ final class Parser {
     }
 
     private Parser(CharSequence raw) {
-        t = new Tokens(raw);
+        this.s = raw;
+        this.len = raw.length();
+        this.i = 0;
+        skipWhitespace();
+    }
+
+    private void skipWhitespace() {
+        while (i < len) {
+            char c = s.charAt(i);
+            if (c == ' ' || c == '\n' || c == '\r' || c == '\t') {
+                i++;
+            } else {
+                break;
+            }
+        }
+    }
+
+    private char peek() {
+        if (i >= len)
+            throw new RuntimeException("Unexpected end of input");
+        return s.charAt(i);
+    }
+
+    private char next() {
+        char c = peek();
+        i++;
+        skipWhitespace();
+        return c;
+    }
+
+    private char nextRaw() {
+        if (i >= len)
+            throw new RuntimeException("Unexpected end of input");
+        return s.charAt(i++);
     }
 
     public void expectChar(char expected) {
-        Json popped = t.pop();
-        if (!(popped instanceof TokenChar(char c) && c == expected)) throw new RuntimeException("needed: " + expected + " got: " + popped);
-    }
-
-    public JsonString parseString() {
-        Json next = t.pop();
-        if (!(next instanceof JsonString js)) throw new RuntimeException("Expecting json string, got " + next);
-        return js;
+        char c = next();
+        if (c != expected)
+            throw new RuntimeException("needed: " + expected + " got: " + c + " at " + i);
     }
 
     private Json parse() {
-        return switch (t.peek()) {
-            case JsonString js -> parseString();
-            case TokenChar tk -> switch (tk.c()) {
-                case '{' -> parseObject();
-                case '[' -> parseArray();
-                default -> throw new IllegalStateException("Unexpected value in tokenchar: " + tk.c());
-            };
-            case JsonBoolean jb -> parseBoolean();
-            case JsonLong jl -> parseLong();
-            case JsonDouble jd -> parseDouble();
-            case JsonNull jn -> parseNull();
-            default -> throw new IllegalStateException("Unexpected value: " + t.peek());
+        if (i >= len)
+            throw new RuntimeException("Unexpected end of input");
+        char c = peek();
+        return switch (c) {
+            case '{' -> parseObject();
+            case '[' -> parseArray();
+            case '"' -> parseString();
+            case 't', 'f' -> parseBoolean();
+            case 'n' -> parseNull();
+            case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' -> parseNumber();
+            default -> throw new IllegalStateException("Unexpected value: " + c + " at " + i);
         };
     }
 
-    private <T extends Json> T parseJsonObj(Class<T> clazz) {
-        Json next = t.pop();
-        if (next.getClass() != clazz) throw new RuntimeException("obj parse expecting " + clazz.getName() + " got " + next.getClass());
-        return clazz.cast(next);
+    private JsonString parseString() {
+        i++; // skip opening "
+        StringBuilder res = new StringBuilder();
+        while (i < len) {
+            char c = nextRaw();
+            if (c == '"') {
+                skipWhitespace();
+                return new JsonString(res.toString());
+            } else if (c == '\\') {
+                char escaped = nextRaw();
+                switch (escaped) {
+                    case '"' -> res.append('"');
+                    case '\\' -> res.append('\\');
+                    case '/' -> res.append('/');
+                    case 'b' -> res.append('\b');
+                    case 'f' -> res.append('\f');
+                    case 'n' -> res.append('\n');
+                    case 'r' -> res.append('\r');
+                    case 't' -> res.append('\t');
+                    case 'u' -> {
+                        if (i + 4 > len)
+                            throw new RuntimeException("Invalid unicode escape");
+                        String hex = s.subSequence(i, i + 4).toString();
+                        res.append((char) Integer.parseInt(hex, 16));
+                        i += 4;
+                    }
+                    default -> res.append(escaped);
+                }
+            } else {
+                res.append(c);
+            }
+        }
+        throw new RuntimeException("Missing closing JSON string");
     }
 
-    public JsonBoolean parseBoolean() {
-        return parseJsonObj(JsonBoolean.class);
+    private JsonBoolean parseBoolean() {
+        if (i + 4 <= len && s.subSequence(i, i + 4).equals("true")) {
+            i += 4;
+            skipWhitespace();
+            return new JsonBoolean(true);
+        } else if (i + 5 <= len && s.subSequence(i, i + 5).equals("false")) {
+            i += 5;
+            skipWhitespace();
+            return new JsonBoolean(false);
+        }
+        throw new RuntimeException("expecting bool at " + i);
     }
 
-    public JsonNull parseNull() {
-        return parseJsonObj(JsonNull.class);
+    private JsonNull parseNull() {
+        if (i + 4 <= len && s.subSequence(i, i + 4).equals("null")) {
+            i += 4;
+            skipWhitespace();
+            return new JsonNull();
+        }
+        throw new RuntimeException("expecting null at " + i);
     }
 
-    public JsonDouble parseDouble() {
-        return parseJsonObj(JsonDouble.class);
+    private Json parseNumber() {
+        int start = i;
+        if (s.charAt(i) == '-')
+            i++;
+        while (i < len && Character.isDigit(s.charAt(i)))
+            i++;
+
+        boolean isDouble = false;
+        if (i < len && s.charAt(i) == '.') {
+            isDouble = true;
+            i++;
+            while (i < len && Character.isDigit(s.charAt(i)))
+                i++;
+        }
+        if (i < len && (s.charAt(i) == 'e' || s.charAt(i) == 'E')) {
+            isDouble = true;
+            i++;
+            if (i < len && (s.charAt(i) == '+' || s.charAt(i) == '-'))
+                i++;
+            while (i < len && Character.isDigit(s.charAt(i)))
+                i++;
+        }
+
+        String numStr = s.subSequence(start, i).toString();
+        skipWhitespace();
+        if (isDouble)
+            return new JsonDouble(Double.parseDouble(numStr));
+        else
+            return new JsonLong(Long.parseLong(numStr));
     }
 
-    public JsonLong parseLong() {
-        return parseJsonObj(JsonLong.class);
-    }
-
-    public JsonObject parseObject() {
+    private JsonObject parseObject() {
         expectChar('{');
         List<JsonPair> pairs = new ArrayList<>();
 
-
-        while (!(t.peek() instanceof TokenChar(char c) && c == '}')) {
-            if (!pairs.isEmpty()) expectChar(',');
-            pairs.add(parsePair());
-
+        if (peek() == '}') {
+            next();
+            return new JsonObject(pairs);
         }
-        t.pop(new TokenChar('}'));
+
+        while (true) {
+            pairs.add(parsePair());
+            char c = peek();
+            if (c == '}') {
+                next();
+                break;
+            }
+            if (c != ',')
+                throw new RuntimeException("Expected ',' or '}' in object, got " + c + " at " + i);
+            next();
+        }
         return new JsonObject(pairs);
     }
 
-    public JsonPair parsePair() { // todo key must be string
+    private JsonPair parsePair() {
+        if (peek() != '"')
+            throw new RuntimeException("Expected string key in object at " + i);
         JsonString key = parseString();
         expectChar(':');
         Json val = parse();
         return new JsonPair(key, val);
     }
 
-    public JsonArray parseArray() {
+    private JsonArray parseArray() {
         expectChar('[');
         List<Json> elems = new ArrayList<>();
 
-        while (!(t.peek() instanceof TokenChar(char c) && c == ']')) {
-            if (!elems.isEmpty()) expectChar(',');
-            elems.add(parse());
-
+        if (peek() == ']') {
+            next();
+            return new JsonArray(elems);
         }
-        t.pop(new TokenChar(']'));
+
+        while (true) {
+            elems.add(parse());
+            char c = peek();
+            if (c == ']') {
+                next();
+                break;
+            }
+            if (c != ',')
+                throw new RuntimeException("Expected ',' or ']' in array, got " + c + " at " + i);
+            next();
+        }
         return new JsonArray(elems);
     }
-
-
-
 }
 
 public interface Json {
@@ -111,19 +224,13 @@ public interface Json {
     }
 }
 
-record TokenChar(char c) implements Json {
-    @Override
-    public String toString() {
-        return c + "";
-    }
-}
-
 record JsonString(String inner) implements Json {
     @Override
     public String toString() {
         return inner;
     }
 }
+
 record JsonDouble(double inner) implements Json {
     @Override
     public String toString() {
@@ -166,27 +273,34 @@ record JsonObject(List<JsonPair> fields) implements Json { // json spec "allows"
     }
 
     public Json get(String rawKey) {
-        return fields.stream().filter(pair -> pair.left().inner().equals(rawKey)).findFirst().map(JsonPair::right).orElse(null);
+        return fields.stream().filter(pair -> pair.left().inner().equals(rawKey)).findFirst().map(JsonPair::right)
+                .orElse(null);
     }
 
     public JsonObject getObj(String rawKey) {
         Json obj = get(rawKey);
-        if (obj instanceof JsonNull) return null;
+        if (obj instanceof JsonNull)
+            return null;
         return (JsonObject) obj;
     }
 
     public JsonArray getArray(String rawKey) {
         Json obj = get(rawKey);
-        if (obj instanceof JsonNull) return null;
+        if (obj instanceof JsonNull)
+            return null;
         return (JsonArray) obj;
     }
 
     public String getString(String rawKey) {
         Json obj = get(rawKey);
-        if (obj == null || obj instanceof JsonNull) return null;
-        if (obj instanceof JsonString js) return js.inner();
-        if (obj instanceof JsonLong jl) return String.valueOf(jl.inner());
-        if (obj instanceof JsonDouble jd) return String.valueOf(jd.inner());
+        if (obj == null || obj instanceof JsonNull)
+            return null;
+        if (obj instanceof JsonString js)
+            return js.inner();
+        if (obj instanceof JsonLong jl)
+            return String.valueOf(jl.inner());
+        if (obj instanceof JsonDouble jd)
+            return String.valueOf(jd.inner());
         return obj.toString();
     }
 
@@ -203,7 +317,8 @@ record JsonObject(List<JsonPair> fields) implements Json { // json spec "allows"
 
     public long getLong(String rawKey) {
         Json obj = get(rawKey);
-        if (obj == null || obj instanceof JsonNull) return 0L;
+        if (obj == null || obj instanceof JsonNull)
+            return 0L;
         return ((JsonLong) obj).inner();
     }
 }

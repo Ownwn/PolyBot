@@ -7,7 +7,7 @@ static String url = "wss://ws-live-data.polymarket.com";
 void main() {
 //    gatherTestData();
 //    testTime();
-    trackLiveTrades();
+trackLiveTrades();
 }
 
 void trackLiveTrades() {
