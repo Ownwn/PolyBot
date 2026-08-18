@@ -203,6 +203,21 @@ public class TradingPanel extends JPanel {
             botPoller = new OrderBookPoller(activeBot, token, strategy, 1000);
             botPoller.start();
 
+            // Verify the local bridge server is reachable; show a clear dialog if not.
+            new Thread(() -> {
+                try {
+                    Http.getJsonObject("http://localhost:3000/book?token_id=" + token);
+                } catch (Exception e) {
+                    String msg = "Could not reach the Polymarket bridge server at http://localhost:3000.\n"
+                            + "Connection refused - is it running? Start it with:\n"
+                            + "  cd ts_server && npm start\n\n"
+                            + "Detail: " + e.getMessage();
+                    activeBot.log("ERROR: " + msg);
+                    SwingUtilities.invokeLater(() ->
+                            JOptionPane.showMessageDialog(this, msg, "Bot cannot start", JOptionPane.ERROR_MESSAGE));
+                }
+            }).start();
+
             pnlTimer = new javax.swing.Timer(1000, e -> {
                 if (activeBot != null) {
                     double pnl = activeBot.getSimulatedPnL();

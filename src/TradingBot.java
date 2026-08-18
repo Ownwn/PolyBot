@@ -97,7 +97,9 @@ public class TradingBot {
         try {
             return Http.post(TS_SERVER_URL + path, body, headers);
         } catch (Exception e) {
-            System.err.println("Error placing order: " + e.getMessage());
+            String msg = "Error placing order: " + e.getMessage();
+            log(msg);
+            System.err.println(msg);
             e.printStackTrace();
             return null;
         }
@@ -108,7 +110,9 @@ public class TradingBot {
         try {
             return Http.getJsonObject(TS_SERVER_URL + path);
         } catch (Exception e) {
-            System.err.println("Error fetching order book: " + e.getMessage());
+            String msg = "Error fetching order book for token " + tokenId + ": " + e.getMessage();
+            log(msg);
+            System.err.println(msg);
             e.printStackTrace();
             return null;
         }
